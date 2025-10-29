@@ -1,4 +1,4 @@
-name: Linux
+name: Linux armv7
 
 on:
   pull_request:
