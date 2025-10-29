@@ -31,10 +31,9 @@ jobs:
             echo "Setting up ARMv7 cross-compilation..."
             sudo apt-get install -y gcc-arm-linux-gnueabihf g++-arm-linux-gnueabihf
 
-            # Ensure the toolchain file exists
             mkdir -p cmake
             if [ ! -f cmake/Toolchain-armv7.cmake ]; then
-              echo "Toolchain file missing, creating default one..."
+              echo "Creating default Toolchain-armv7.cmake"
               cat > cmake/Toolchain-armv7.cmake <<'EOF'
 set(CMAKE_SYSTEM_NAME Linux)
 set(CMAKE_SYSTEM_PROCESSOR arm)
@@ -55,12 +54,11 @@ EOF
             echo "Building natively on x86_64..."
             echo "CMAKEARGS=" >> $GITHUB_ENV
             echo "OUTPUT_DIR=build-x86_64" >> $GITHUB_ENV
-          fi
 
       - name: Build
         run: |
-          mkdir -p $OUTPUT_DIR
-          cd $OUTPUT_DIR
+          mkdir -p ${{ env.OUTPUT_DIR }}
+          cd ${{ env.OUTPUT_DIR }}
           cmake ${{ env.CMAKEARGS }} ..
           make -j$(nproc)
         env:
@@ -70,10 +68,10 @@ EOF
       - name: Collect binaries
         run: |
           mkdir -p artifacts/${{ matrix.arch }}
-          if [ -d $OUTPUT_DIR/bin ]; then
-            cp -r $OUTPUT_DIR/bin/* artifacts/${{ matrix.arch }}/ || echo "No binaries found."
+          if [ -d "${{ env.OUTPUT_DIR }}/bin" ]; then
+            cp -r "${{ env.OUTPUT_DIR }}/bin/"* artifacts/${{ matrix.arch }}/ || echo "No binaries found."
           else
-            echo "No build output found in $OUTPUT_DIR/bin"
+            echo "No build output found in ${{ env.OUTPUT_DIR }}/bin"
           fi
 
       - name: Upload artifacts
