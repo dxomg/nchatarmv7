@@ -52,6 +52,9 @@ BUMP="0"
 YES=""
 CMAKEARGS="${NCHAT_CMAKEARGS:-}"
 
+# TARGET support: allow cross-compilation target via env TARGET or env NCHAT_TARGET
+TARGET="${TARGET:-${NCHAT_TARGET:-}}"
+
 if [[ "${#}" == "0" ]]; then
   show_usage
   exit 1
@@ -140,6 +143,16 @@ if [ "${OS}" == "Linux" ]; then
   fi
 fi
 
+# --- TARGET-specific helper values ---
+# For armv7 (armhf) we expect the GNU toolchain triplet arm-linux-gnueabihf
+if [[ "${TARGET}" == "armv7" ]]; then
+  export CROSS_SYSROOT="${CROSS_SYSROOT:-}" # user can set sysroot if they want
+  export CROSS_PREFIX="${CROSS_PREFIX:-arm-linux-gnueabihf-}"
+  # toolchain binaries: arm-linux-gnueabihf-gcc / g++
+  export CROSS_CC="${CROSS_CC:-${CROSS_PREFIX}gcc}"
+  export CROSS_CXX="${CROSS_CXX:-${CROSS_PREFIX}g++}"
+fi
+
 # deps
 if [[ "${DEPS}" == "1" ]]; then
   if [ "${OS}" == "Linux" ]; then
@@ -147,6 +160,12 @@ if [[ "${DEPS}" == "1" ]]; then
       sudo apt update && sudo apt ${YES} install ccache cmake build-essential gperf help2man libreadline-dev libssl-dev libncurses-dev libncursesw5-dev ncurses-doc zlib1g-dev libsqlite3-dev libmagic-dev || exiterr "deps failed (${DISTRO}), exiting."
       sudo apt ${YES} install golang-1.23 || exiterr "deps failed (${DISTRO} apt golang), exiting."
       sudo update-alternatives --install /usr/bin/go go /usr/lib/go-1.23/bin/go 123 || exiterr "deps failed (${DISTRO} select golang), exiting."
+      if [[ "${TARGET}" == "armv7" ]]; then
+        # install cross compilers for armv7 (armhf)
+        sudo dpkg --add-architecture armhf || true
+        sudo apt update
+        sudo apt ${YES} install gcc-arm-linux-gnueabihf g++-arm-linux-gnueabihf libc6:armhf libstdc++6:armhf || exiterr "deps failed (installing cross-toolchain), exiting."
+      fi
     elif [[ "${DISTRO}" == "Debian GNU/Linux" ]]; then
       sudo apt update && sudo apt ${YES} install ccache cmake build-essential gperf help2man libreadline-dev libssl-dev libncurses-dev libncursesw5-dev ncurses-doc zlib1g-dev libsqlite3-dev libmagic-dev || exiterr "deps failed (${DISTRO}), exiting."
       RELEASE=$(lsb_release -a | grep 'Codename:' | awk -F':' '{print $2}' | awk '{$1=$1;print}')
@@ -163,6 +182,11 @@ if [[ "${DEPS}" == "1" ]]; then
         echo "Unsupported ${DISTRO} version ${RELEASE}. Install golang-1.23 or newer manually, for example by running:"
         echo "wget https://go.dev/dl/go1.24.4.linux-amd64.tar.gz && sudo tar xf go.1.24.4.linux-amd64.tar.gz -C /usr/local"
         exiterr "deps failed (${DISTRO} ${RELEASE}), exiting."
+      fi
+      if [[ "${TARGET}" == "armv7" ]]; then
+        sudo dpkg --add-architecture armhf || true
+        sudo apt update
+        sudo apt ${YES} install gcc-arm-linux-gnueabihf g++-arm-linux-gnueabihf libc6:armhf libstdc++6:armhf || exiterr "deps failed (installing cross-toolchain), exiting."
       fi
     elif [[ "${DISTRO}" == "Raspbian GNU/Linux" ]] || [[ "${DISTRO}" == "Pop!_OS" ]]; then
       sudo apt update && sudo apt ${YES} install ccache cmake build-essential gperf help2man libreadline-dev libssl-dev libncurses-dev libncursesw5-dev ncurses-doc zlib1g-dev libsqlite3-dev libmagic-dev golang || exiterr "deps failed (${DISTRO}), exiting."
@@ -247,6 +271,20 @@ if [[ "${BUILD}" == "1" ]] || [[ "${DEBUG}" == "1" ]]; then
     export CC="clang"
     export CXX="clang++"
   fi
+
+  # If TARGET is armv7, add cross-compiler settings to cmake args
+  if [[ "${TARGET}" == "armv7" ]]; then
+    # prefer user-supplied CROSS_CC/CXX; otherwise assume arm-linux-gnueabihf-gcc/g++
+    CMAKEARGS="-DCMAKE_SYSTEM_NAME=Linux -DCMAKE_SYSTEM_PROCESSOR=arm -DCMAKE_C_COMPILER=${CROSS_CC:-arm-linux-gnueabihf-gcc} -DCMAKE_CXX_COMPILER=${CROSS_CXX:-arm-linux-gnueabihf-g++} ${CMAKEARGS}"
+    # If CROSS_SYSROOT provided, add it to CMake args
+    if [[ -n "${CROSS_SYSROOT}" ]]; then
+      CMAKEARGS="-DCMAKE_SYSROOT=${CROSS_SYSROOT} ${CMAKEARGS}"
+    fi
+    # For 32-bit ARM (armv7 hard float)
+    CMAKEARGS="-DDEFAULT_TARGET_ARCH=armv7 ${CMAKEARGS}"
+    # ensure we don't try to dynamically load host-specific libgo etc
+    CMAKEARGS="-DHAS_DYNAMICLOAD=OFF ${CMAKEARGS}"
+  fi
 fi
 
 # make args
@@ -286,7 +324,13 @@ fi
 if [[ "${BUILD}" == "1" ]]; then
   echo "-- Using cmake ${CMAKEARGS}"
   echo "-- Using ${MAKEARGS} (${CPU_MAX_THREADS} cores, ${MEM} MB phys mem, ${MEM_NEEDED_PER_CORE} MB mem per core needed)"
-  mkdir -p build && cd build && cmake ${CMAKEARGS} .. && make -s ${MAKEARGS} && cd .. || exiterr "build failed, exiting."
+
+  # If cross building for armv7, create a dedicated build dir
+  if [[ "${TARGET}" == "armv7" ]]; then
+    mkdir -p build-armv7 && cd build-armv7 && cmake ${CMAKEARGS} .. && make -s ${MAKEARGS} && cd .. || exiterr "build failed (armv7), exiting."
+  else
+    mkdir -p build && cd build && cmake ${CMAKEARGS} .. && make -s ${MAKEARGS} && cd .. || exiterr "build failed, exiting."
+  fi
 fi
 
 # debug
@@ -296,41 +340,3 @@ if [[ "${DEBUG}" == "1" ]]; then
   echo "-- Using ${MAKEARGS} (${CPU_MAX_THREADS} cores, ${MEM} MB phys mem, ${MEM_NEEDED_PER_CORE} MB mem per core needed)"
   mkdir -p dbgbuild && cd dbgbuild && cmake ${CMAKEARGS} .. && make -s ${MAKEARGS} && cd .. || exiterr "debug build failed, exiting."
 fi
-
-# tests
-if [[ "${TESTS}" == "1" ]]; then
-  true || exiterr "tests failed, exiting."
-fi
-
-# doc
-if [[ "${DOC}" == "1" ]]; then
-  if [[ -x "$(command -v help2man)" ]]; then
-    if [[ "$(uname)" == "Darwin" ]]; then
-      SED="gsed -i"
-    else
-      SED="sed -i"
-    fi
-    help2man -n "ncurses chat" -N -o src/nchat.1 ./build/bin/nchat && ${SED} "s/\.\\\\\" DO NOT MODIFY THIS FILE\!  It was generated by help2man.*/\.\\\\\" DO NOT MODIFY THIS FILE\!  It was generated by help2man./g" src/nchat.1 || exiterr "doc failed, exiting."
-  fi
-fi
-
-# install
-if [[ "${INSTALL}" == "1" ]]; then
-  if [[ -z ${INSTALL_CMD+x} ]]; then
-    if [[ "${OS}" == "Linux" ]]; then
-      if [[ "${DISTRO}" != "Termux" ]]; then
-        INSTALL_CMD="$(basename $(which sudo doas | head -1))"
-      fi
-    elif [[ "${OS}" == "Darwin" ]]; then
-      if [[ "${GITHUB_ACTIONS}" == "true" ]]; then
-        INSTALL_CMD="sudo"
-      fi
-    fi
-  fi
-
-  echo "-- Using ${INSTALL_CMD:+$INSTALL_CMD }make install"
-  cd build && ${INSTALL_CMD} make install && cd .. || exiterr "install failed (${OS}), exiting."
-fi
-
-# exit
-exit 0
