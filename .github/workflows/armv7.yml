@@ -1,4 +1,4 @@
-name: Linux armv7
+name: Linux (x86_64 + ARMv7)
 
 on:
   pull_request:
@@ -11,61 +11,48 @@ on:
 jobs:
   linux-build:
     runs-on: ubuntu-latest
-
     strategy:
       matrix:
         arch: [x86_64, armv7]
 
     steps:
-    - name: Checkout
-      uses: actions/checkout@v3
+      - name: Checkout
+        uses: actions/checkout@v4
 
-    - name: Set up QEMU (optional, for running arm containers - harmless)
-      uses: docker/setup-qemu-action@v2
+      - name: Set up environment
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install -y qemu-user-static binfmt-support
 
-    - name: Install dependencies (host)
-      if: matrix.arch == 'x86_64'
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y ccache cmake build-essential gperf help2man libreadline-dev libssl-dev libncurses-dev libncursesw5-dev ncurses-doc zlib1g-dev libsqlite3-dev libmagic-dev golang-go
+          if [ "${{ matrix.arch }}" = "armv7" ]; then
+            echo "Setting up ARMv7 cross-compilation..."
+            sudo apt-get install -y gcc-arm-linux-gnueabihf g++-arm-linux-gnueabihf
+            echo "CC=arm-linux-gnueabihf-gcc" >> $GITHUB_ENV
+            echo "CXX=arm-linux-gnueabihf-g++" >> $GITHUB_ENV
+            echo "CMAKEARGS=-DCMAKE_TOOLCHAIN_FILE=../cmake/Toolchain-armv7.cmake" >> $GITHUB_ENV
+            echo "OUTPUT_DIR=build-armv7" >> $GITHUB_ENV
+          else
+            echo "Building natively on x86_64..."
+            echo "CMAKEARGS=" >> $GITHUB_ENV
+            echo "OUTPUT_DIR=build-x86_64" >> $GITHUB_ENV
+          fi
 
-    - name: Install cross-toolchain for armv7
-      if: matrix.arch == 'armv7'
-      run: |
-        sudo dpkg --add-architecture armhf || true
-        sudo apt-get update
-        # install cross compilers and essential build deps for cross-compilation
-        sudo apt-get install -y gcc-arm-linux-gnueabihf g++-arm-linux-gnueabihf libc6:armhf libstdc++6:armhf ccache cmake build-essential gperf help2man libreadline-dev libssl-dev libncurses-dev libncursesw5-dev zlib1g-dev libsqlite3-dev libmagic-dev golang-go
-        # ensure CMake can find the cross compilers via PATH (they are in /usr/bin)
-        arm-linux-gnueabihf-gcc --version
-        arm-linux-gnueabihf-g++ --version
+      - name: Build
+        run: ./make.sh all -y
+        env:
+          NCHAT_CMAKEARGS: ${{ env.CMAKEARGS }}
 
-    - name: Show matrix info
-      run: |
-        echo "Matrix arch: ${{ matrix.arch }}"
+      - name: Collect binaries
+        run: |
+          mkdir -p artifacts/${{ matrix.arch }}
+          if [ -d build/bin ]; then
+            cp -r build/bin/* artifacts/${{ matrix.arch }}/
+          elif [ -d build-armv7/bin ]; then
+            cp -r build-armv7/bin/* artifacts/${{ matrix.arch }}/
+          fi
 
-    - name: Build (x86_64)
-      if: matrix.arch == 'x86_64'
-      run: |
-        ./make.sh all -y
-
-    - name: Build (armv7 cross)
-      if: matrix.arch == 'armv7'
-      env:
-        TARGET: armv7
-        # optional: pass additional cmake args here:
-        # NCHAT_CMAKEARGS: "-DENABLE_FOO=ON"
-      run: |
-        # export CMake args to help make.sh detect cross compile
-        export NCHAT_CMAKEARGS="${NCHAT_CMAKEARGS:-}"
-        # run the make script with the TARGET environment variable
-        TARGET=armv7 ./make.sh all -y
-
-    - name: Upload build artifacts
-      if: always()
-      uses: actions/upload-artifact@v4
-      with:
-        name: build-${{ matrix.arch }}
-        path: |
-          build
-          dbgbuild
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: nchat-${{ matrix.arch }}
+          path: artifacts/${{ matrix.arch }}/
