@@ -1,0 +1,71 @@
+name: Linux
+
+on:
+  pull_request:
+  push:
+    branches:
+      - master
+      - main
+      - dev/*
+
+jobs:
+  linux-build:
+    runs-on: ubuntu-latest
+
+    strategy:
+      matrix:
+        arch: [x86_64, armv7]
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v3
+
+    - name: Set up QEMU (optional, for running arm containers - harmless)
+      uses: docker/setup-qemu-action@v2
+
+    - name: Install dependencies (host)
+      if: matrix.arch == 'x86_64'
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y ccache cmake build-essential gperf help2man libreadline-dev libssl-dev libncurses-dev libncursesw5-dev ncurses-doc zlib1g-dev libsqlite3-dev libmagic-dev golang-go
+
+    - name: Install cross-toolchain for armv7
+      if: matrix.arch == 'armv7'
+      run: |
+        sudo dpkg --add-architecture armhf || true
+        sudo apt-get update
+        # install cross compilers and essential build deps for cross-compilation
+        sudo apt-get install -y gcc-arm-linux-gnueabihf g++-arm-linux-gnueabihf libc6:armhf libstdc++6:armhf ccache cmake build-essential gperf help2man libreadline-dev libssl-dev libncurses-dev libncursesw5-dev zlib1g-dev libsqlite3-dev libmagic-dev golang-go
+        # ensure CMake can find the cross compilers via PATH (they are in /usr/bin)
+        arm-linux-gnueabihf-gcc --version
+        arm-linux-gnueabihf-g++ --version
+
+    - name: Show matrix info
+      run: |
+        echo "Matrix arch: ${{ matrix.arch }}"
+
+    - name: Build (x86_64)
+      if: matrix.arch == 'x86_64'
+      run: |
+        ./make.sh all -y
+
+    - name: Build (armv7 cross)
+      if: matrix.arch == 'armv7'
+      env:
+        TARGET: armv7
+        # optional: pass additional cmake args here:
+        # NCHAT_CMAKEARGS: "-DENABLE_FOO=ON"
+      run: |
+        # export CMake args to help make.sh detect cross compile
+        export NCHAT_CMAKEARGS="${NCHAT_CMAKEARGS:-}"
+        # run the make script with the TARGET environment variable
+        TARGET=armv7 ./make.sh all -y
+
+    - name: Upload build artifacts
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: build-${{ matrix.arch }}
+        path: |
+          build
+          dbgbuild
