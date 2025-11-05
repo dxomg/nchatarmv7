@@ -1,40 +1,40 @@
-name: Build on Raspbian Lite ARMv7
+name: Build ARMv7 Binary
 
 on:
-  push:   # triggers on any push to any branch
+  push:   # runs on any push
+    branches: 
+      - '*'  # all branches
 
 jobs:
   build:
     runs-on: ubuntu-latest
-    container:
-      image: raspios_lite:latest
-      options: --user root  # needed to install packages
-
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v2
 
-      - name: Install dependencies
-        run: |
-          apt update
-          apt install -y \
-            ccache cmake build-essential gperf help2man \
-            libreadline-dev libssl-dev libncurses-dev ncurses-doc \
-            zlib1g-dev libsqlite3-dev libmagic-dev golang
+      - name: Build inside ARM container
+        uses: pguyot/arm-runner-action@v2
+        id: build_image
+        with:
+          base_image: raspios_lite:latest
+          commands: |
+            set -e
+            apt update
+            apt install -y \
+              ccache cmake build-essential gperf help2man \
+              libreadline-dev libssl-dev libncurses-dev ncurses-doc \
+              zlib1g-dev libsqlite3-dev libmagic-dev golang
 
-      - name: Configure build
-        run: |
-          mkdir -p build
-          cd build
-          cmake ..
+            mkdir -p build
+            cd build
+            cmake ..
+            make -s -j$(nproc)
 
-      - name: Build
-        run: |
-          cd build
-          make -s -j$(nproc)
+            # Output binary path for artifact upload
+            echo "::set-output name=binary::$(pwd)/mybinary"  # replace 'mybinary' with your binary name
 
       - name: Upload binary artifact
         uses: actions/upload-artifact@v4
         with:
           name: mybinary
-          path: build/mybinary   # replace 'mybinary' with your actual executable name
+          path: ${{ steps.build_image.outputs.binary }}
