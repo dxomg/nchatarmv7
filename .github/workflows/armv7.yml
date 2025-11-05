@@ -1,9 +1,7 @@
 name: Build on DietPi ARMv7
 
 on:
-  push:
-    branches:
-      - main  # or '*' for all branches
+  push:   # triggers on any push to any branch
 
 jobs:
   build:
