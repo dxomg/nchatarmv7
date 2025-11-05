@@ -1,53 +1,43 @@
-name: Linux ARMv7 Cross-Compile
+name: Build on DietPi ARMv7
 
 on:
   push:
     branches:
       - main
-      - master
-      - dev/*
   pull_request:
 
 jobs:
-  build-armv7:
+  build:
     runs-on: ubuntu-latest
+    container:
+      image: dietpi/rpi_armv7_bullseye
+      options: --user root
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Install build tools
+      - name: Install dependencies
         run: |
-          sudo apt-get update -y
-          sudo apt-get install -y cmake ninja-build build-essential curl
+          apt update
+          apt install -y \
+            ccache cmake build-essential gperf help2man \
+            libreadline-dev libssl-dev libncurses-dev ncurses-doc \
+            zlib1g-dev libsqlite3-dev libmagic-dev golang
 
-      - name: Setup ARMv7 cross-compiler and libraries
+      - name: Configure build
         run: |
-          sudo dpkg --add-architecture armhf
-          echo "deb [arch=armhf] http://deb.debian.org/debian bullseye main" | sudo tee /etc/apt/sources.list.d/armhf.list
-          sudo apt-get update -y
-          sudo apt-get install -y \
-            gcc-arm-linux-gnueabihf g++-arm-linux-gnueabihf \
-            libsqlite3-dev:armhf
+          mkdir -p build
+          cd build
+          cmake ..
 
-      - name: Configure (CMake for ARMv7)
+      - name: Build
         run: |
-          mkdir -p build-armv7
-          cd build-armv7
-          cmake .. \
-            -DCMAKE_BUILD_TYPE=Release \
-            -DCMAKE_SYSTEM_NAME=Linux \
-            -DCMAKE_SYSTEM_PROCESSOR=armv7 \
-            -DCMAKE_C_COMPILER=arm-linux-gnueabihf-gcc \
-            -DCMAKE_CXX_COMPILER=arm-linux-gnueabihf-g++ \
-            -DCMAKE_FIND_ROOT_PATH_MODE_LIBRARY=ONLY \
-            -DCMAKE_FIND_ROOT_PATH_MODE_INCLUDE=ONLY
+          cd build
+          make -s -j$(nproc)
 
-      - name: Build (ARMv7)
-        run: cmake --build build-armv7 --parallel
-
-      - name: Upload ARMv7 artifact
+      - name: Upload binary artifact
         uses: actions/upload-artifact@v4
         with:
-          name: build-armv7
-          path: build-armv7/
+          name: mybinary
+          path: build/mybinary   # replace 'mybinary' with your actual executable name
