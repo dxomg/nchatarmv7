@@ -7,19 +7,19 @@ on:
 
 jobs:
   build-armv7:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04   # ← FIXED (armhf packages exist here)
 
     steps:
       - name: Checkout source
         uses: actions/checkout@v4
 
-      - name: Enable armhf architecture and install base deps
+      - name: Enable armhf architecture and install deps
         run: |
           sudo dpkg --add-architecture armhf
           sudo apt update
           sudo apt install -y \
-            ccache cmake build-essential gperf help2man \
-            crossbuild-essential-armhf pkg-config \
+            ccache cmake build-essential gperf help2man pkg-config \
+            crossbuild-essential-armhf \
             libmagic-dev:armhf \
             libsqlite3-dev:armhf \
             libssl-dev:armhf \
