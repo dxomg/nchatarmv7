@@ -13,14 +13,19 @@ jobs:
       - name: Checkout source
         uses: actions/checkout@v4
 
-      - name: Install dependencies (except Go)
+      - name: Enable armhf architecture and install base deps
         run: |
+          sudo dpkg --add-architecture armhf
           sudo apt update
           sudo apt install -y \
             ccache cmake build-essential gperf help2man \
-            libreadline-dev libssl-dev libncurses-dev libncursesw5-dev \
-            zlib1g-dev libsqlite3-dev libmagic-dev \
-            crossbuild-essential-armhf
+            crossbuild-essential-armhf pkg-config \
+            libmagic-dev:armhf \
+            libsqlite3-dev:armhf \
+            libssl-dev:armhf \
+            libreadline-dev:armhf \
+            libncurses-dev:armhf \
+            zlib1g-dev:armhf
 
       - name: Install Go 1.23.x
         run: |
