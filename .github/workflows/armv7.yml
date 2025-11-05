@@ -3,8 +3,7 @@ name: Build on DietPi ARMv7
 on:
   push:
     branches:
-      - main
-  pull_request:
+      - main  # or '*' for all branches
 
 jobs:
   build:
