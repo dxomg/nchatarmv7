@@ -13,14 +13,23 @@ jobs:
       - name: Checkout source
         uses: actions/checkout@v4
 
-      - name: Set up dependencies
+      - name: Install dependencies (except Go)
         run: |
           sudo apt update
           sudo apt install -y \
             ccache cmake build-essential gperf help2man \
             libreadline-dev libssl-dev libncurses-dev libncursesw5-dev \
-            zlib1g-dev libsqlite3-dev libmagic-dev golang \
+            zlib1g-dev libsqlite3-dev libmagic-dev \
             crossbuild-essential-armhf
+
+      - name: Install Go 1.23.x
+        run: |
+          GO_VERSION=1.23.2
+          wget -q https://go.dev/dl/go${GO_VERSION}.linux-amd64.tar.gz
+          sudo rm -rf /usr/local/go
+          sudo tar -C /usr/local -xzf go${GO_VERSION}.linux-amd64.tar.gz
+          echo "export PATH=/usr/local/go/bin:\$PATH" >> $GITHUB_ENV
+          go version
 
       - name: Configure ARMv7 build
         run: |
