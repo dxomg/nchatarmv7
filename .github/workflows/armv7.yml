@@ -1,4 +1,4 @@
-name: Build on DietPi ARMv7
+name: Build on Raspbian Lite ARMv7
 
 on:
   push:   # triggers on any push to any branch
@@ -7,8 +7,8 @@ jobs:
   build:
     runs-on: ubuntu-latest
     container:
-      image: dietpi/rpi_armv7_bullseye
-      options: --user root
+      image: raspios_lite:latest
+      options: --user root  # needed to install packages
 
     steps:
       - name: Checkout repository
